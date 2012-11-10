@@ -3,7 +3,7 @@ import scala.collection.mutable.HashMap
 import scala.collection.immutable.List
 import java.io.BufferedReader
 import java.io.FileReader
-import java.math
+import scala.math
 
 
 object NGram  {
@@ -97,7 +97,7 @@ class SymbolFrequencies {
       } else noSymbol
     }
 
-    val randVal    = Math.round( total * Math.random ).toInt
+    val randVal    = scala.math.round( total * scala.math.random ).toInt
     val symbolIterator = symbols.iterator
     getSymbol( symbolIterator, randVal )
   }
