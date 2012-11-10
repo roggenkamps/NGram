@@ -8,14 +8,25 @@ import java.io.BufferedReader
 import java.io.FileReader
 import java.math
 
-
 abstract class  Symbol
-case class NilSymbol()               extends Symbol
-case class NumberSymbol( number: String ) extends Symbol
-case class OtherSymbol( char: String )  extends Symbol
-case class WordSymbol( word: String )   extends Symbol
-case class ListSymbol( symlist: List[Symbol] ) extends Symbol
-case class ParEndSymbol( ) extends Symbol
+case class NilSymbol()                         extends Symbol {
+  override def toString: String = ""
+}
+case class NumberSymbol( number: String )      extends Symbol {
+  override def toString: String = number.toString
+}
+case class OtherSymbol( char: String )         extends Symbol {
+  override def toString: String = char.toString
+}
+case class WordSymbol( word: String )          extends Symbol {
+  override def toString: String = word
+}
+case class ListSymbol( symlist: List[Symbol] ) extends Symbol {
+  override def toString: String = (symlist.head.toString /: symlist.tail)(_+" "+_.toString)
+}
+case class ParEndSymbol( )                     extends Symbol {
+  override def toString = " "
+}
 
 object noSymbol extends NilSymbol
 
@@ -41,11 +52,11 @@ class SymbolFrequencies {
       case Some(freq) => { total = total + 1
 			   symbols.update(symbol, freq+1)
 //			  println( "addSymbol1: ["+symbol+ "->"+ freq+1)
-			}
+			 }
       case None       => { total = total + 1
                            symbols.update(symbol, 1)
 //			  println( "addSymbol2: ["+symbol+ "->"+ 1)
-			}
+			 }
     }
   }
 
@@ -78,6 +89,51 @@ class SymbolFrequencies {
   }
 }
 
+class Dictionary extends HashMap[List[Symbol],SymbolFrequencies] {
+
+  def addSymbol( symbolList: List[Symbol] ) = {
+    val key = symbolList.dropRight(1);
+    val symbol = symbolList.last;
+    get(key) match {
+      case Some(symFreqs) => symFreqs.addSymbol(symbol)
+      case None           => { val frequencyMap = new SymbolFrequencies()
+                              frequencyMap.addSymbol( symbol )
+                              update( key, frequencyMap )
+		            }
+    }
+  }
+
+  def genSymbols( wordList: List[Symbol],
+		 number: Int,
+		 lineSize: Int ) {
+    if ( number > 0 ) {
+      val nextSymbol: Symbol = selectNextSymbol( wordList )
+      val nextList : List[Symbol] = wordList.tail ::: List(nextSymbol)
+      val outstr = nextSymbol.toString
+      if ( lineSize - outstr.length -1 < 0 ) {
+	println;
+	print( " "+outstr )
+	genSymbols( nextList, number -1, 70-outstr.length-1 )
+      } else {
+	print( " "+outstr )
+	genSymbols( nextList, number -1, lineSize-outstr.length-1)
+      }
+    } else return
+  }
+
+  def lookup(symbolList: List[Symbol] ) = {
+    get( symbolList )
+  }
+
+  def selectNextSymbol( symbolList: List[Symbol] ): Symbol = {
+    lookup( symbolList ) match {
+      case Some( symFreqs ) => symFreqs.selectSymbol()
+      case None             => noSymbol
+    }
+  }
+
+}
+
 object SymbolParser extends SymbolParser {
   val parser = new SymbolParser
 
@@ -93,89 +149,12 @@ object SymbolParser extends SymbolParser {
 	case Error( msg, _ ) => { println( "Error: "+msg ); return }
       }
 
-      val frequencyMap = new HashMap[List[Symbol],SymbolFrequencies]()
+      val dictionary = new Dictionary()
 
-      parse_result map { symlist => addSymbolToFreqMap( symlist, frequencyMap ) }
-
-//      frequencyMap foreach { item => println( item )}
-
+      parse_result map { symlist => dictionary.addSymbol( symlist ) }
       val wordList = for ( i <- 1 to wordsInKey-1 ) yield WordSymbol(args(i))
-      //List( WordSymbol(args(1)), WordSymbol(args(2)))
-//      print( args :\ (""){_+_} )
-      genSymbols( wordList.toList, 200, 70 - args(1).length - args(2).length - 2, frequencyMap )
+      dictionary. genSymbols( wordList.toList, 200, 70 - args(1).length - args(2).length - 2 )
       println()
-    }
-  }
-
-  def genSymbols( wordList: List[Symbol],
-		 number: Int,
-		 lineSize: Int,
-		 frequencyMap: HashMap[List[Symbol],SymbolFrequencies]) {
-    if ( number > 0 ) {
-      val nextSymbol: Symbol = selectNextSymbol( wordList, frequencyMap )
-      val nextList : List[Symbol] = wordList.tail ::: List(nextSymbol)
-
-      nextSymbol match {
-	case NumberSymbol( n ) => {
-	  val outstr=n.toString;
-	  if ( lineSize - outstr.length - 1 < 0 ) {
-	    println
-	    print( " "+outstr)
-	    genSymbols( nextList, number -1, 70-outstr.length-1,       frequencyMap)
-	  } else {
-	    print( " "+outstr)
-	    genSymbols( nextList, number -1, lineSize-outstr.length-1, frequencyMap)
-	  }}
-	case OtherSymbol( c ) =>
-	  if ( lineSize < 1 ) {
-	    println
-	    print(c)
-	    genSymbols( nextList, number -1, 69,		       frequencyMap )
-	  } else {
-	    print(c)
-	    genSymbols( nextList, number -1, lineSize - 1,             frequencyMap )
-	  }
-	case WordSymbol( outstr ) => {
-	  if ( lineSize - outstr.length - 1 < 0 ) {
-	    println
-	    print( " "+outstr)
-	    genSymbols( nextList, number -1, 70-outstr.length-1,      frequencyMap)
-	  } else {
-	    print( " "+outstr)
-	    genSymbols( nextList, number -1, lineSize-outstr.length-1,frequencyMap)
-	  }}
-      }
-    } else {
-      return
-    }
-  }
-    
-  def addSymbolToFreqMap( symbolList: List[Symbol],
-			 hm: HashMap[List[Symbol],SymbolFrequencies] ) = {
-      val key = symbolList.dropRight(1);
-      val symbol = symbolList.last;
-      hm.get(key) match {
-        case Some(symFreqs) => symFreqs.addSymbol(symbol)
-        case None           => { val frequencyMap = new SymbolFrequencies()
-                                  frequencyMap.addSymbol( symbol )
-		                              hm.update( key, frequencyMap )
-		                            }
-     }
-  }
-  
-  def lookup(symbolList: List[Symbol],
-	     hm: HashMap[List[Symbol],SymbolFrequencies] ) = {
-      val key = symbolList
-    val rtn = hm.get( key )
-//    println( "lookup: key=("+key+")->"+rtn )
-    rtn
-  }
-
-  def selectNextSymbol( symbolList: List[Symbol],
-		       hm: HashMap[List[Symbol],SymbolFrequencies] ): Symbol = {
-    lookup( symbolList, hm ) match {
-      case Some( symFreqs ) => symFreqs.selectSymbol()
-      case None             => noSymbol
     }
   }
 }
