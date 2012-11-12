@@ -5,29 +5,68 @@ import java.io.BufferedReader
 import java.io.FileReader
 import scala.math
 
+case class Arguments( infiles: List[String], ngramWords: Int, genWords: Int, startWords: List[String])
 
 object NGram  {
   val parser = new SymbolParser
-
+  
   def main( args: Array[String] ) {
-    val wordsInKey = 2
+    def parseArgs( results: Arguments, args: List[String] ): Arguments =
+      if ( args.isEmpty ) results
+      else
+	args match {
+	  case "-d"::fileName::rest => parseArgs( Arguments(results.infiles:::List(fileName),
+							    results.ngramWords,
+							    results.genWords,
+							    results.startWords), rest )
+	  case "-n"::nwords::rest  => parseArgs( Arguments(results.infiles,
+							   nwords.toInt,
+							   results.genWords,
+							   results.startWords), rest )
+	  case "-w"::twords::rest  => parseArgs( Arguments(results.infiles,
+							   results.ngramWords,
+							   twords.toInt,
+							   results.startWords), rest )
+	  case word::rest          => parseArgs( Arguments(results.infiles,
+							   results.ngramWords,
+							   results.genWords,
+							   results.startWords:::List(word)), rest )
+	  case Nil                 => results
+	}
+    
+    val ngramWords = 2
     val numWords   = 200
-    if ( args.length < wordsInKey + 1 ) {
-      println( "usage:  NGram corpus word1 word2..." )
+    val pargs = parseArgs(Arguments(List():List[String],
+				    ngramWords,
+				    numWords,
+				    List():List[String]), args.toList)
+//    println( "args:  infiles:    "+pargs.infiles)
+//    println( "       ngramWords: "+pargs.ngramWords)
+//    println( "       genWords:   "+pargs.genWords)
+//    println( "       startWords: "+pargs.startWords)
+			  
+    if ( pargs.infiles.length == 0 || pargs.startWords.length != pargs.ngramWords - 1 ) {
+      println( "usage:  NGram {-d corpus}+ {-n numOutputWords}? {-t wordsInNGram}? word1 word2..." )
+      println( "        Use multiple -d options to include multiple input corpii")
+      println( "        The number of words used to start generation must be one less than" )
+      println( "          the number of words in the NGram." )
     } else {
       val dictionary = new Dictionary()
-      val reader= new BufferedReader(new FileReader( args(0)))
-      val parse_result = parser.parse( parser.symbols, reader ) match {
-	case parser.Success( ListSymbol(symlist), _ ) => symlist.sliding(wordsInKey+1).toList
-	case parser.Error( msg, _ )                   => { println( "Error: "+msg ); return }
-      }
-
-      parse_result map { symlist => dictionary.addSymbol( symlist ) }
-      val wordList = for ( i <- 1 to wordsInKey ) yield WordSymbol(args(i))
+      val y = for {inFile <- pargs.infiles
+		   reader= new BufferedReader(new FileReader( inFile))
+		   parse_result = parser.parse( parser.symbols, reader ) match {
+		     case parser.Success( ListSymbol(symlist), _ ) =>
+		       symlist.sliding(pargs.ngramWords).toList
+		     case parser.Error( msg, _ )                   =>
+		       { println( "Error: "+msg ); return }
+		   }
+		   x = parse_result map { symlist => dictionary.addSymbol( symlist ) }
+		 } yield( x )
+      val wordList = for ( w <- pargs.startWords ) yield WordSymbol(w)
       val startphrase = (wordList.head.toString /: wordList.tail)(_+" "+_.toString)
       print( startphrase )
       dictionary. genSymbols( wordList.toList,
-			     numWords - wordsInKey,
+			     pargs.genWords - pargs.ngramWords - 1,
 			     70 - startphrase.length )
       println()
     }
