@@ -18,6 +18,9 @@ from a list of symbols associated with the previous ngram.
 Project Gutenberg, http://gutenberg.org, has many texts that you can
 download and use as a source of text to use for dictionaries.
 
+This directory contains an SBT build file if you want to build it
+using SBT (www.scala-sbt.org).
+
 
 Examples
 
@@ -36,3 +39,5 @@ scala -howtorun:object NGram -d data/TomSawyer.txt -d data/ChristmasCarol.txt pe
 
 Tom Sawyer meets Tiny Tim!
 
+
+Have fun and enjoy.

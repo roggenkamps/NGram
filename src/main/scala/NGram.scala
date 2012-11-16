@@ -5,10 +5,9 @@ import java.io.BufferedReader
 import java.io.FileReader
 import scala.math
 
-case class Arguments( infiles: List[String], ngramWords: Int, genWords: Int, startWords: List[String])
-
 object NGram  {
-  val parser = new SymbolParser
+  val lineLength = 70
+  val parser     = new SymbolParser
   
   def main( args: Array[String] ) {
     def parseArgs( results: Arguments, args: List[String] ): Arguments =
@@ -34,7 +33,7 @@ object NGram  {
 	  case Nil                 => results
 	}
     
-    val ngramWords = 2
+    val ngramWords = 3
     val numWords   = 200
     val pargs = parseArgs(Arguments(List():List[String],
 				    ngramWords,
@@ -46,34 +45,77 @@ object NGram  {
 //    println( "       startWords: "+pargs.startWords)
 			  
     if ( pargs.infiles.length == 0 || pargs.startWords.length != pargs.ngramWords - 1 ) {
-      println( "usage:  NGram {-d corpus}+ {-n numOutputWords}? {-t wordsInNGram}? word1 word2..." )
+      println( "usage:  NGram {-d corpus}+ {-n wordsInNGram}? {-w numOutputWords}? word1 word2..." )
+      println( "        defaults:  wordsInNGram = 3,  numOutputWords = 200" )
       println( "        Use multiple -d options to include multiple input corpii")
       println( "        The number of words used to start generation must be one less than" )
       println( "          the number of words in the NGram." )
     } else {
       val dictionary = new Dictionary()
-      val y = for {inFile <- pargs.infiles
-		   reader= new BufferedReader(new FileReader( inFile))
-		   parse_result = parser.parse( parser.symbols, reader ) match {
-		     case parser.Success( ListSymbol(symlist), _ ) =>
-		       symlist.sliding(pargs.ngramWords).toList
-		     case parser.Error( msg, _ )                   =>
-		       { println( "Error: "+msg ); return }
-		   }
-		   x = parse_result map { symlist => dictionary.addSymbol( symlist ) }
-		 } yield( x )
+      val notUsed = for {inFile <- pargs.infiles
+		         reader= new BufferedReader(new FileReader( inFile))
+		         parse_result = parser.parse( parser.symbols, reader ) match {
+		           case parser.Success( ListSymbol(symlist), _ ) =>
+     		             symlist.sliding(pargs.ngramWords).toList
+		           case parser.Error( msg, _ )                   =>
+		            { println( "Error: "+msg ); return }
+		         }
+		         x = parse_result map { symlist => dictionary.addSymbol( symlist ) }
+		        } yield( x )
       val wordList = for ( w <- pargs.startWords ) yield WordSymbol(w)
       val startphrase = (wordList.head.toString /: wordList.tail)(_+" "+_.toString)
       print( startphrase )
       dictionary. genSymbols( wordList.toList,
 			     pargs.genWords - pargs.ngramWords - 1,
-			     70 - startphrase.length )
+			     lineLength - startphrase.length )
       println()
     }
   }
 }
 
+case class Arguments( infiles: List[String], ngramWords: Int, genWords: Int, startWords: List[String])
+
+class Dictionary extends HashMap[List[Symbol],SymbolFrequencies] {
+  def addSymbol( symbolList: List[Symbol] ) = {
+    val key = symbolList.dropRight(1);
+    val symbol = symbolList.last;
+    get(key) match {
+      case Some(symFreqs) => symFreqs.addSymbol(symbol)
+      case None           => { val frequencyMap = new SymbolFrequencies()
+                              frequencyMap.addSymbol( symbol )
+                              update( key, frequencyMap )
+		            }
+    }
+  }
+
+  def genSymbols( wordList: List[Symbol], nWordsLeft: Int, lineSize: Int ) {
+    if ( nWordsLeft == 0 ) return
+    else {
+      val nextSymbol: Symbol = selectNextSymbol( wordList )
+      val nextList : List[Symbol] = wordList.tail ::: List(nextSymbol)
+      val outstr = nextSymbol.toString
+      if ( lineSize - outstr.length -1 < 0 ) {
+	println;
+	print( outstr )
+	genSymbols( nextList, nWordsLeft -1, NGram.lineLength-outstr.length )
+      } else {
+	print( " "+outstr )
+	genSymbols( nextList, nWordsLeft -1, lineSize-outstr.length-1)
+      }
+    }
+  }
+
+  def selectNextSymbol( symbolList: List[Symbol] ): Symbol =
+    get( symbolList ) match {
+      case Some( symFreqs ) => symFreqs.selectSymbol()
+      case None             => noSymbol
+    }
+}
+
 abstract class  Symbol
+case class ListSymbol( symlist: List[Symbol] ) extends Symbol {
+  override def toString: String = (symlist.head.toString /: symlist.tail)(_+" "+_.toString)
+}
 case class NilSymbol()                         extends Symbol {
   override def toString: String = ""
 }
@@ -83,14 +125,11 @@ case class NumberSymbol( number: String )      extends Symbol {
 case class OtherSymbol( char: String )         extends Symbol {
   override def toString: String = char.toString
 }
-case class WordSymbol( word: String )          extends Symbol {
-  override def toString: String = word
-}
-case class ListSymbol( symlist: List[Symbol] ) extends Symbol {
-  override def toString: String = (symlist.head.toString /: symlist.tail)(_+" "+_.toString)
-}
 case class ParEndSymbol( )                     extends Symbol {
   override def toString = " "
+}
+case class WordSymbol( word: String )          extends Symbol {
+  override def toString: String = word
 }
 
 object noSymbol extends NilSymbol
@@ -124,22 +163,23 @@ class SymbolFrequencies {
   }
 
   def selectSymbol(): Symbol = {
-    def getSymbol( iter: Iterator[(Symbol,Int)], selectVal: Int ): Symbol = {
-      if ( iter.hasNext ) {
+    def getSymbol( iter: Iterator[(Symbol,Int)], selectVal: Int ): Symbol =
+      if ( !iter.hasNext ) { noSymbol }
+      else {
 	iter.next() match {
-	  case (key, value) => if ( selectVal <= value ) {
-	    key
-	  } else {
-	    getSymbol( iter, selectVal - value )
-	  }
+	  case (key, value) =>
+	    if ( selectVal <= value ) {
+	      key
+	    } else {
+	      getSymbol( iter, selectVal - value )
+	    }
 	}
-      } else noSymbol
     }
 
-    val randVal    = scala.math.round( total * scala.math.random ).toInt
+    val randVal    = scala.math.floor( (total+1) * scala.math.random ).toInt
     val symbolIterator = symbols.iterator
     getSymbol( symbolIterator, randVal )
-  }
+    }
     
   override def toString: String = {
     "SymbolFrequencies("+total+",HashMap(" + 
@@ -147,48 +187,3 @@ class SymbolFrequencies {
     "))"
   }
 }
-
-class Dictionary extends HashMap[List[Symbol],SymbolFrequencies] {
-
-  def addSymbol( symbolList: List[Symbol] ) = {
-    val key = symbolList.dropRight(1);
-    val symbol = symbolList.last;
-    get(key) match {
-      case Some(symFreqs) => symFreqs.addSymbol(symbol)
-      case None           => { val frequencyMap = new SymbolFrequencies()
-                              frequencyMap.addSymbol( symbol )
-                              update( key, frequencyMap )
-		            }
-    }
-  }
-
-  def genSymbols( wordList: List[Symbol],
-		 number: Int,
-		 lineSize: Int ) {
-    if ( number > 0 ) {
-      val nextSymbol: Symbol = selectNextSymbol( wordList )
-      val nextList : List[Symbol] = wordList.tail ::: List(nextSymbol)
-      val outstr = nextSymbol.toString
-      if ( lineSize - outstr.length -1 < 0 ) {
-	println;
-	print( outstr )
-	genSymbols( nextList, number -1, 70-outstr.length )
-      } else {
-	print( " "+outstr )
-	genSymbols( nextList, number -1, lineSize-outstr.length-1)
-      }
-    } else return
-  }
-
-  def lookup(symbolList: List[Symbol] ) = {
-    get( symbolList )
-  }
-
-  def selectNextSymbol( symbolList: List[Symbol] ): Symbol = {
-    lookup( symbolList ) match {
-      case Some( symFreqs ) => symFreqs.selectSymbol()
-      case None             => noSymbol
-    }
-  }
-}
-
