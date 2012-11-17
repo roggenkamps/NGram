@@ -52,18 +52,25 @@ object NGram  {
       println( "          the number of words in the NGram." )
     } else {
       val dictionary = new Dictionary()
-      val notUsed = for {inFile <- pargs.infiles
-		         reader= new BufferedReader(new FileReader( inFile))
-		         parse_result = parser.parse( parser.symbols, reader ) match {
-		           case parser.Success( ListSymbol(symlist), _ ) =>
-     		             symlist.sliding(pargs.ngramWords).toList
-		           case parser.Error( msg, _ )                   =>
-		            { println( "Error: "+msg ); return }
-		         }
-		         x = parse_result map { symlist => dictionary.addSymbol( symlist ) }
-		        } yield( x )
-      val wordList = for ( w <- pargs.startWords ) yield WordSymbol(w)
-      val startphrase = (wordList.head.toString /: wordList.tail)(_+" "+_.toString)
+      val startphrase: String = (pargs.startWords.head.toString /: pargs.startWords.tail)(_+" "+_.toString)
+      val wordList    = parser.parse( parser.symbols, startphrase ) match {
+	                   case parser.Success( ListSymbol( symlist ), _ ) =>
+			     symlist
+	                   case parser.Error( mesg, _ ) =>
+			     println( "Error in starting phrase ("+startphrase+"): "+ mesg )
+	                     return
+                        }
+      for {inFile <- pargs.infiles
+	   reader= new BufferedReader(new FileReader( inFile))
+	   parse_result = parser.parse( parser.symbols, reader ) match {
+	     case parser.Success( ListSymbol(symlist), _ ) =>
+     	       symlist.sliding(pargs.ngramWords).toList
+	     case parser.Error( msg, _ )                   =>
+	       { println( "Error: "+msg ); return }
+	   }
+	   x = parse_result map { ngrams => dictionary.addSymbol( ngrams ) }
+	 }
+//      val wordList = for ( w <- pargs.startWords ) yield WordSymbol(w)
       print( startphrase )
       dictionary. genSymbols( wordList.toList,
 			     pargs.genWords - pargs.ngramWords - 1,
