@@ -5,6 +5,9 @@ import java.io.BufferedReader
 import java.io.FileReader
 import scala.math
 
+// Author: Steve Roggenkamp
+// 2010-01-01
+
 object NGram  {
   val lineLength = 70
   val parser     = new SymbolParser
